@@ -1,0 +1,24 @@
+{
+  "name": "node_design-language_scanner",
+  "version": "1.0.0",
+  "description": "Used to compare design language sites to other sites to grade their compliance.",
+  "main": "index.js",
+  "dependencies": {
+    "puppeteer": "^1.6.0"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jmdrawneek/node_design-language_scanner.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/jmdrawneek/node_design-language_scanner/issues"
+  },
+  "homepage": "https://github.com/jmdrawneek/node_design-language_scanner#readme"
+}
