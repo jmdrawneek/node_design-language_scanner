@@ -1,4 +1,5 @@
 const Domain = require('./Domain');
+const Collection = require('./Collecton--puppeteer');
 
 // Get list of target site roots
 
@@ -41,9 +42,10 @@ const result = {
     }
 };
 
-const domains = ['www.royalcanin.com'];
-const DLurl = 'd3moonnr9fkxfg.cloudfront.net';
+const domains = ['https://www.royalcanin.com'];
+const DLassetUrl = 'd3moonnr9fkxfg.cloudfront.net';
 const styleGuide = 'http://developer.royalcanin.com/test.html';
+process.setMaxListeners(Infinity); // Set max listeners to Infinity as we're going to firing up a lot of browsers.
 
 
 //exports.handler =
@@ -54,8 +56,11 @@ const styleGuide = 'http://developer.royalcanin.com/test.html';
 
 
        domains.map((url) => {
-           const domain = new Domain(url, DLurl, styleGuide);
-           return domain.gotoDomain();
+           const collector = new Collection(url);
+           const domain = new Domain(url, DLassetUrl, styleGuide, collector);
+           const results = domain.gotoDomain();
+           results.catch(console.log);
+           return results;
        });
 
         Promise.all(domains)

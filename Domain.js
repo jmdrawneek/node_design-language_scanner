@@ -1,175 +1,186 @@
-const puppeteer = require('puppeteer');
+var Queue = require('better-queue');
 
 module.exports = class Domain {
-    // Domain
-    // Create object
-    // Set name from passing argument
-    // Query script tags and find DL then regex for DL version
-    // Set the date
+  // Domain
+  // Create object
+  // Set name from passing argument
+  // Query script tags and find DL then regex for DL version
+  // Set the date
 
-    constructor(url, DLurl, styleGuide) {
-        this.url = url;
-        this.DLurl = DLurl;
-        this.styleGuide = styleGuide;
-        this.DLversion = null;
-        this.puppeteer = puppeteer;
-        this.urls = [url];
-        this.DLselectors = [];
+  constructor(url, DLassetUrl, styleGuideUrl, Collector) {
+    this.url = url;
+    this.DLassetUrl = DLassetUrl;
+    this.styleGuideUrl = styleGuideUrl;
+    this.Collector = Collector;
+    this.DLversion = null;
+    this.urls = [url];
+    this.DLselectors = [];
+    this.DLlegacySelectors = [];
+    this.Queue = null;
 
-        this.result = {
-            domain: url,
-            date: Date.now(),
-            version: this.DLversion,
-            urls: this.urls,
-            selectors: {
-                match: [],
-                not_match: []
+
+    this.result = {
+      domain: url,
+      date: Date.now(),
+      version: this.DLversion,
+      urls: this.urls,
+      selectors: {
+        match: [],
+        not_match: [],
+        legacy: []
+      }
+    };
+
+    this.setupBatching();
+  }
+
+  setupBatching() {
+    this.Queue = new Queue((batch, cb) => {
+
+      Promise.all(batch.map(url => this.searchMoreUrls(url)))
+        .then(() => {
+            cb();
+
+        })
+        .catch(console.log);
+
+    }, { batchSize: 10 });
+
+
+    this.Queue.on('task_finish', (taskId, result, stats) => {
+
+    });
+
+    this.Queue.on('task_failed', function (taskId, err, stats) {console.log(err, stats)});
+
+    this.Queue.on('empty', () => {
+    });
+  }
+
+  /**
+   *
+   * @returns {Promise<any>}
+   */
+  gotoDomain() {
+    return new Promise(async (resolve, reject) => {
+
+      try {
+        const page = await this.Collector.gotoPage(this.url);
+        const scriptInfo = await this.Collector.collectScriptInfo(this.url, page,
+          {
+            attributesToCollect: {
+              src: []
             }
-        };
+          });
 
-    }
-
-    gotoDomain() {
-        return new Promise(async (resolve, reject) => {
-
-            this.browser = await this.puppeteer.launch();
-            this.page = await this.browser.newPage();
-            // Get the selectors to compare to.
-            await this.getDLselectors();
-
-            console.log('this.url', this.url);
-            // Start by getting the DL version.
-            // Add the protocol here as lots of links don't include it but it's required for chrome.
-            await this.page.goto('http://' + this.url);
-            const localDLurl = this.DLurl;
-            this.DLversion = await this.page.$$eval('script', (scriptLink, localDLurl) => {
-                let version = 'NOT USING DESIGN LANGUAGE';
-
-                scriptLink.forEach((scpt) => {
-                    const src = scpt.src;
-                    if (src !== null) {
-                        if (src.indexOf(localDLurl) !== -1) {
-                            version =  src.match(new RegExp('v=([0-9].*)'))[0];
-                        }
-                    }
-
-                });
-
-                return version;
-
-            }, localDLurl);
-
-            try {
-                // Collect all the hrefs from the landing page as a starting point.
-                await this.collectUrls(this.page);
+        // Loop through the src values and find the link to the assets.
+        // Use the query string to determine the version number.
+        scriptInfo.src.forEach((src) => {
+          if (src !== null) {
+            if (src.indexOf(this.DLassetUrl) !== -1) {
+              this.DLversion = src.match(new RegExp('v=([0-9].*)'))[1].replace(/-/g, '.');
             }
-            catch(err) {
-                console.log('Failed to visit: ', this.url, err)
-            }
-
-        });
-    }
-
-    async collectSelectors(page) {
-        await page.$$eval('*', a => {
-            const classes = a.getAttribute('class');
-
-            classes.map((selector) => {
-                this.setSelector = selector;
-            })
-        });
-    }
-
-    async collectUrls(page) {
-        const urls = await page.$$eval('a', (els, thisUrl) => {
-            let links = [];
-            els.forEach((el) => {
-                const href = el.href;
-
-                // If this is in the same domain add it to the array of urls.
-                if (href.includes(thisUrl)) {
-                    links.push(href);
-                }
-            });
-
-            return links;
-        }, this.url);
-
-        console.log(urls.length);
-        console.log(urls);
-
-        urls.map((url) => {
-            console.log(url);
-            this.setUrls(url);
+          }
         });
 
-        return true;
-    }
+        console.log('Design language version being used: ', this.DLversion);
 
-    set setSelector(selector) {
-        if (this.DLselectors.includes(selector)) {
-            this.result.selectors.match =
-                !this.result.selectors.match.contains(selector) ?
-                    this.result.selectors.match.push(selector) :
-                    this.result.selectors.match;
+        // Collect the selectors from the design language.
+        await this.getDLselectors();
+
+        try {
+          // Collect all the hrefs from the landing page as a starting point.
+          const collectedUrl = await this.Collector.collectUrls(this.urls[0], page);
+          collectedUrl.map(url => this.setUrls(url));
         }
-        else {
-            this.result.selectors.not_match =
-                !this.result.selectors.not_match.contains(selector) ?
-                    this.result.selectors.not_match.push(selector) :
-                    this.result.selectors.not_match;
+        catch (err) {
+          console.log('Failed to collect urls from: ', this.url, err)
         }
-    }
 
-    async setUrls(url) {
-        console.log(this.urls);
-        console.log(this);
-        const newUrl = this.urls.indexOf(url) === -1;
-        this.urls = newUrl ? this.urls.push(url) : this.urls;
-
-        if (newUrl) {
-            // Start a fresh instance of puppeteer.
-            const browser = await puppeteer.launch();
-            const page = await browser.newPage();
-            const thePage = page.goto(url);
-
-            // Collect classes
-            await this.collectSelectors(thePage);
-
-            // Collect urls
-            await this.collectUrls(thePage);
-        }
-    }
-
-    async getDLselectors() {
-        let DLselectors = {};
-        const browser = await puppeteer.launch();
-        const page = await browser.newPage();
-        await page.goto(this.styleGuide);
-
-        DLselectors = await page.$$eval('*', els => {
-            let DLselectors = {};
-
-            els.forEach((el) => {
-                let classes = el.getAttribute('class');
-                if (classes !== null) {
-                    classes = classes.split(' ');
-                    classes.forEach((selector) => {
-                        DLselectors[selector] = '';
-                    });
-                }
-            });
-
-
-            return DLselectors;
+        this.Queue.on('drain', () => {
+          const totalUrls = this.urlCounter;
+          console.log('The total urls collected from was ', totalUrls);
+          return resolve(this.result);
         });
 
-        console.log(DLselectors);
+      }
+      catch (e) {
+        reject(new Error('Failed to collect script info from: ' + this.url));
+      }
 
-        this.DLselectors = Object.keys(DLselectors);
-    }
+    });
+  }
 
-    getResult() {
-        return this.result;
+  searchMoreUrls(url) {
+    return new Promise(async (pass, fail) => {
+        const page = await this.Collector.gotoPage(url);
+        try {
+          // Collect classes
+          const classes = await this.Collector.collectSelectors(url, page);
+          classes.map((selector) => {
+            this.setSelector = selector;
+          })
+        }
+        catch (e) {
+          throw new Error('Failed to collect selectors from ' + url + ' error: ' + e);
+        }
+
+        try {
+          // Collect urls
+          const urls = await this.Collector.collectUrls(url, page);
+          // Loop through the collected urls send them to be de-duped and scanned.
+          urls.map(async (url) => {
+            await this.setUrls(url);
+          });
+        }
+        catch (e) {
+          throw new Error('Failed to collect urls from ' + url + ' error: ' + e);
+        }
+
+        console.log('Total searches left to complete: ', (this.urls.length - this.Queue.getStats().total));
+        return pass(url);
+      });
+  }
+
+  set setSelector(selector) {
+    const match = this.result.selectors.match;
+    const not_match = this.result.selectors.not_match;
+    const legacy = this.result.selectors.legacy;
+
+    if (this.DLselectors.includes(selector)) {
+      this.result.selectors.match = !match.includes(selector) ? match.concat(selector) : match;
     }
+    else if (this.DLlegacySelectors.includes(selector)) {
+      this.result.selectors.legacy = !legacy.includes(selector) ? legacy.concat(selector) : legacy;
+    }
+    else {
+      this.result.selectors.not_match = !not_match.includes(selector) ? not_match.concat(selector) : not_match;
+    }
+  }
+
+  async setUrls(url) {
+    if (!this.urls.includes(url)) {
+      this.urls.push(url);
+      this.addSearches(url);
+    }
+  }
+
+  async getDLselectors() {
+    const page = await this.Collector.gotoPage(this.styleGuideUrl);
+
+    this.DLselectors = await this.Collector.collectSelectors(this.styleGuideUrl, page);
+
+    // Generated a legacy selector array by stripping out the rc prefix.
+    this.DLlegacySelectors = this.DLselectors.map((selector) => {
+      return selector.replace('rc-', '');
+    });
+  }
+
+  addSearches(url) {
+    this.Queue.push(url);
+  }
+
+  getResult() {
+    return this.result;
+  }
 };
