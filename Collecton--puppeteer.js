@@ -10,14 +10,15 @@ module.exports = class CollectonPuppeteer {
     const browser = await puppeteer.launch();
     const page = await browser.newPage();
     await page.goto(url, {
-      timeout: 3000000
+      timeout: 3000000,
+      waitUntil: 'networkidle2'
     });
 
-    return page;
+    return { page, browser };
   }
 
-  async collectSelectors(url, page) {
-    const classes = await page.$$eval('*', els => {
+  async collectSelectors(url, sesh) {
+    const classes = await sesh.page.$$eval('*', els => {
       let classHolder = {};
       els.forEach((el) => {
         let classes = el.getAttribute('class');
@@ -38,10 +39,10 @@ module.exports = class CollectonPuppeteer {
     return classes;
   }
 
-  async collectUrls(url, page) {
+  async collectUrls(url, sesh) {
     const cleanUrl = this.url.replace(/https:\/\/|http:\/\//g, '');
 
-    const urls = await page.$$eval('a', (els, thisUrl) => {
+    const urls = await sesh.page.$$eval('a', (els, thisUrl) => {
       let links = {};
       els.forEach((el) => {
         const href = el.href.replace(/#|\?.*/g, '');
@@ -59,11 +60,11 @@ module.exports = class CollectonPuppeteer {
     return Object.keys(urls);
   }
 
-  async collectScriptInfo(url, page, options) {
+  async collectScriptInfo(url, sesh, options) {
     // Start by getting the DL version.
     // Add the protocol here as lots of links don't include it but it's required for chrome.
-    await page.goto(url);
-    return await page.$$eval('script', (scriptLink, attrs) => {
+    await sesh.page.goto(url);
+    return await sesh.page.$$eval('script', (scriptLink, attrs) => {
       // Loop through the script tag nodes.
       scriptLink.forEach((scpt) => {
         // Loop through the attributes requested and push found values.

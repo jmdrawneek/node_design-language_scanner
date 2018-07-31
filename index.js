@@ -1,5 +1,6 @@
 const Domain = require('./Domain');
 const Collection = require('./Collecton--puppeteer');
+const fs = require('fs');
 
 // Get list of target site roots
 
@@ -42,7 +43,8 @@ const result = {
     }
 };
 
-const domains = ['https://www.royalcanin.com'];
+// const domains = ['https://www.royalcanin.com'];
+const domains = ['http://developer.royalcanin.com'];
 const DLassetUrl = 'd3moonnr9fkxfg.cloudfront.net';
 const styleGuide = 'http://developer.royalcanin.com/test.html';
 process.setMaxListeners(Infinity); // Set max listeners to Infinity as we're going to firing up a lot of browsers.
@@ -53,19 +55,20 @@ process.setMaxListeners(Infinity); // Set max listeners to Infinity as we're goi
     // Wrap the main method in a try/catch block.
     // Prevents UncaughtPromiseRejection.
     try {
-
-
-       domains.map((url) => {
-           const collector = new Collection(url);
-           const domain = new Domain(url, DLassetUrl, styleGuide, collector);
-           const results = domain.gotoDomain();
-           results.catch(console.log);
-           return results;
-       });
-
-        Promise.all(domains)
+        Promise.all(domains.map((url) => {
+          const collector = new Collection(url);
+          const domain = new Domain(url, DLassetUrl, styleGuide, collector);
+          const results = domain.gotoDomain();
+          results.catch(console.log);
+          return results;
+        }))
             .then(function(values) {
-                console.log(values);
+                console.log('Returned domain result: ', values);
+                const json = JSON.stringify(values);
+              fs.writeFile('results.json', json, (err) => {
+                if (err) throw err;
+                console.log('The file has been saved!');
+              });
             })
             .catch(function(err) {
                 console.log(err.message); // some coding error in handling happened
